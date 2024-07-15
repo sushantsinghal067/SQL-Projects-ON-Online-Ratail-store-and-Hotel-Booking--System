@@ -1,0 +1,176 @@
+Rooms:
+
+--RoomID (INT, Primary Key): Unique identifier for each room.
+--HotelID (INT, Foreign Key): References the HotelID in the Hotels table (optional, if managing multiple hotels).
+--RoomType (VARCHAR(255)): Type of room (e.g., Single, Double, Suite).
+--Description (TEXT): Description of the room amenities and features.
+--Price (DECIMAL(10,2)): Price per night for the room.
+--MaxOccupancy (INT): Maximum number of guests allowed in the room.
+
+Customers:
+
+--CustomerID (INT, Primary Key): Unique identifier for each customer.
+--FirstName (VARCHAR(255)): Customer's first name.
+--LastName (VARCHAR(255)): Customer's last name.
+--Email (VARCHAR(255)): Customer's email address.
+--Phone (VARCHAR(255)): Customer's phone number (optional).
+
+Reservations:
+
+--ReservationID (INT, Primary Key): Unique identifier for each reservation.
+--CustomerID (INT, Foreign Key): References the CustomerID in the Customers table.
+--RoomID (INT, Foreign Key): References the RoomID in the Rooms table.
+--CheckInDate (DATE): Date the guest is scheduled to check in.
+--CheckOutDate (DATE): Date the guest is scheduled to check out.
+--Guests (INT): Number of guests staying in the room.
+--Status (VARCHAR(255)): Reservation status (e.g., Confirmed, Pending, Cancelled).
+--SpecialRequests (TEXT): Any special requests made by the customer (optional).
+
+Payments:
+
+--PaymentID (INT, Primary Key): Unique identifier for each payment.
+--ReservationID (INT, Foreign Key): References the ReservationID in the Reservations table.
+--Amount (DECIMAL(10,2)): Amount paid for the reservation.
+--PaymentMethod (VARCHAR(255)): Payment method used (e.g., Credit Card, Cash).
+--PaymentDate (DATE): Date the payment was made.
+
+Relationships:
+
+--One room can have many reservations (One-to-Many).
+--One customer can have many reservations (One-to-Many).
+--One reservation belongs to one customer (Many-to-One).
+--One reservation belongs to one room (Many-to-One).
+--One reservation can have many payments (One-to-Many).
+
+---Benefits of this Design:
+
+This design allows for efficient storage and retrieval of booking data.
+Foreign keys ensure data integrity and consistency.
+This structure facilitates complex queries for analyzing booking trends, room availability, and customer behavior.
+
+CREATE TABLE Rooms (
+    room_id SERIAL PRIMARY KEY,
+    room_number VARCHAR(10) UNIQUE NOT NULL,
+    room_type VARCHAR(50),
+    capacity INT,
+    price_per_night NUMERIC(10, 2) NOT NULL,
+    availability BOOLEAN DEFAULT TRUE
+);
+
+CREATE TABLE Customer (
+    customer_id SERIAL PRIMARY KEY,
+    first_name VARCHAR(255) NOT NULL,
+    last_name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    phone_number VARCHAR(20),
+    address VARCHAR(255),
+    city VARCHAR(255),
+    state VARCHAR(255),
+    zip_code VARCHAR(10)
+);
+
+CREATE TABLE Reservations (
+    reservation_id SERIAL PRIMARY KEY,
+    customer_id INT REFERENCES Customers(customer_id),
+    room_id INT REFERENCES Rooms(room_id),
+    check_in_date DATE NOT NULL,
+    check_out_date DATE NOT NULL,
+    status VARCHAR(50)
+);
+
+CREATE TABLE Payment (
+    payment_id SERIAL PRIMARY KEY,
+    reservation_id INT REFERENCES Reservations(reservation_id),
+    payment_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    amount NUMERIC(10, 2),
+    payment_method VARCHAR(50)
+);
+
+---Now we have to insert the data into tables
+-- Insert Rooms
+INSERT INTO Rooms (room_number, room_type, capacity, price_per_night, availability) VALUES
+('101', 'Single', 1, 100.00, TRUE),
+('102', 'Double', 2, 150.00, TRUE),
+('103', 'Suite', 4, 300.00, TRUE);
+
+-- Insert Customers
+INSERT INTO Customer (first_name, last_name, email, phone_number, address, city, state, zip_code) VALUES
+('John', 'Doe', 'john.doe@example.com', '1234567890', '123 Elm Street', 'Springfield', 'IL', '62701'),
+('Jane', 'Smith', 'jane.smith@example.com', '0987654321', '456 Oak Avenue', 'Chicago', 'IL', '60605');
+
+-- Insert Reservations
+INSERT INTO Reservations (customer_id, room_id, check_in_date, check_out_date, status) VALUES
+(1, 1, '2024-07-01', '2024-07-05', 'Confirmed'),
+(2, 2, '2024-07-03', '2024-07-07', 'Confirmed');
+
+-- Insert Payment
+INSERT INTO Payment (reservation_id, payment_date, amount, payment_method) VALUES
+(1, '2024-07-01 10:00:00', 400.00, 'Credit Card'),
+(2, '2024-07-03 12:00:00', 600.00, 'PayPal');
+
+
+---Solve the queries related to hotel management system
+---1. Retrieve All Reservations for a Customer
+
+SELECT r.reservation_id, r.check_in_date, r.check_out_date, r.status, rm.room_number, rm.room_type
+FROM Reservations r
+JOIN Rooms rm ON r.room_id = rm.room_id
+WHERE r.customer_id = 1;
+
+---2. Retrieve Payment Details for a Reservation
+
+SELECT p.payment_id, p.payment_date, p.amount, p.payment_method
+FROM Payment p
+WHERE p.reservation_id = 1;
+
+---3. Retrieve Available Rooms for a Given Date Range
+
+SELECT room_id, room_number, room_type, capacity, price_per_night
+FROM Rooms
+WHERE availability = TRUE
+AND room_id NOT IN (
+    SELECT room_id
+    FROM Reservations
+    WHERE (check_in_date, check_out_date) OVERLAPS (DATE '2024-07-02', DATE '2024-07-04')
+);
+
+---4. Retrieve Total Revenue for a Specific Period
+
+SELECT SUM(p.amount) AS total_revenue
+FROM Payment p
+JOIN Reservations r ON p.reservation_id = r.reservation_id
+WHERE r.check_in_date >= '2024-07-01' AND r.check_out_date <= '2024-07-31';
+
+---5. Retrieve Customers Who Have Not Made Any Reservations
+
+SELECT c.customer_id, c.first_name, c.last_name, c.email
+FROM Customer c
+LEFT JOIN Reservations r ON c.customer_id = r.customer_id
+WHERE r.reservation_id IS NULL;
+
+---6. Retrieve Room Occupancy Rate
+
+SELECT room_id,room_number, 
+       COUNT(reservation_id) * 1.0 / 
+       (SELECT COUNT(*) FROM Reservations) AS occupancy_rate
+FROM Rooms r
+LEFT JOIN Reservations res ON r.room_id = res.room_id
+GROUP BY room_id, room_number;
+
+---7. Retrieve Reservations with Payment Information
+
+SELECT r.reservation_id, r.check_in_date, r.check_out_date, r.status, 
+       c.first_name, c.last_name, rm.room_number, rm.room_type, 
+       p.payment_date, p.amount, p.payment_method
+FROM Reservations r
+JOIN Customer c ON r.customer_id = c.customer_id
+JOIN Rooms rm ON r.room_id = rm.room_id
+JOIN Payment p ON r.reservation_id = p.reservation_id
+ORDER BY r.check_in_date;
+
+---8. Retrieve Rooms Never Booked
+
+SELECT rm.room_id, rm.room_number, rm.room_type, rm.price_per_night, rm.availability
+FROM Rooms rm
+LEFT JOIN Reservations r ON rm.room_id = r.room_id
+WHERE r.reservation_id IS NULL;
